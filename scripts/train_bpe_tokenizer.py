@@ -5,6 +5,7 @@ from tokenizer.bpe_train import get_tokenizer
 
 SPECIAL_TOKENS = ["<|endoftext|>"]
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="train bpe tokenizer")
     parser.add_argument("--data-path", type=str, help="depth path of training task")

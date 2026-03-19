@@ -47,9 +47,7 @@ class Tokenizer:
                 next_token_id += 1
 
         self.bytes2int = {value: key for key, value in self.vocab.items()}
-        self.special_token_ids = {
-            token: self.bytes2int[token.encode("utf-8")] for token in self.special_tokens
-        }
+        self.special_token_ids = {token: self.bytes2int[token.encode("utf-8")] for token in self.special_tokens}
         self.special_pattern = None
         if self.special_tokens:
             escaped_tokens = [re.escape(token) for token in sorted(self.special_tokens, key=len, reverse=True)]
@@ -78,10 +76,7 @@ class Tokenizer:
             with open(vocab_filepath, encoding="utf-8") as handle:
                 raw_vocab = json.load(handle)
                 unicode_to_byte = {value: key for key, value in _gpt2_bytes_to_unicode().items()}
-            vocab = {
-                index: bytes(unicode_to_byte[char] for char in token)
-                for token, index in raw_vocab.items()
-            }
+            vocab = {index: bytes(unicode_to_byte[char] for char in token) for token, index in raw_vocab.items()}
 
         return {int(index): value for index, value in vocab.items()}
 
