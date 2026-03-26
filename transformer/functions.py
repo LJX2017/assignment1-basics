@@ -1,9 +1,12 @@
-import torch
 import math
-from einops import rearrange, einsum
-from .linear import Linear, MLP
-from .embedding import Embedding
 from dataclasses import dataclass
+
+import torch
+from einops import einsum, rearrange
+
+from .embedding import Embedding
+from .linear import MLP, Linear
+
 # import torch.nn.functional as F
 
 
@@ -168,22 +171,34 @@ class GPTConfig:
 class transformer_lm(torch.nn.Module):
     def __init__(self, config: GPTConfig, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.lm_head = Embedding(config.vocab_size, config.n_embd)
+        self.embedding = Embedding(config.vocab_size, config.n_embd)
         d_k = config.n_embd // config.n_head
         self.config = config
-        self.layers = [transformer_block(config.n_embd,
-                                         config.n_head,
-                                         config.sequence_len,
-                                         config.d_ff,
-                                         rope=RotaryPositionalEmbedding(10000, d_k, config.sequence_len)
-                                         ) for i in range(config.n_layer)]
+        self.layers = [
+            transformer_block(
+                config.n_embd,
+                config.n_head,
+                config.sequence_len,
+                config.d_ff,
+                rope=RotaryPositionalEmbedding(10000, d_k, config.sequence_len),
+            )
+            for i in range(config.n_layer)
+        ]
         self.norm = RMSNorm(config.n_embd)
-        self.linear = Linear(config.n_embd, config.vocab_size)
-    
+        self.lm_head = Linear(config.n_embd, config.vocab_size)
+
     def forward(self, token_ids: torch.Tensor):
-        x = self.lm_head(token_ids)
+        x = self.embedding(token_ids)
         for i in range(self.config.n_layer):
             x = self.layers[i](x)
         x = self.norm(x)
-        x = self.linear(x)
+        x = self.lm_head(x)
         return x
+
+
+def cross_entropy(logits, target):  # Float[Tensor, " batch_size vocab_size"], Int[Tensor, " batch_size"] -> float
+    bs, vs = logits.shape
+    logits = logits - torch.max(logits, dim=-1, keepdim=True).values
+    exp = torch.exp(logits)
+    loss = -(logits[torch.arange(bs), target] - torch.log((torch.sum(exp, dim=-1))))
+    return torch.sum(loss) / bs

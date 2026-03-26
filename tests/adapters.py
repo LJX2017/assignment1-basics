@@ -413,7 +413,7 @@ def run_transformer_lm(
             n_embd=d_model,
         )
     )
-    model.lm_head.weight.data = weights["token_embeddings.weight"]
+    model.embedding.weight.data = weights["token_embeddings.weight"]
 
     for layer_idx in range(num_layers):
         prefix = f"layers.{layer_idx}."
@@ -430,7 +430,7 @@ def run_transformer_lm(
         layer.rms_norm2.gain.data = weights[prefix + "ln2.weight"]
 
     model.norm.gain.data = weights["ln_final.weight"]
-    model.linear.weight.data = weights["lm_head.weight"]
+    model.lm_head.weight.data = weights["lm_head.weight"]
 
     return model(in_indices)
 
@@ -532,7 +532,9 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    from transformer.functions import cross_entropy
+
+    return cross_entropy(inputs, targets)
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
@@ -551,7 +553,9 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    from transformer.optimizer import AdamW
+
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(
