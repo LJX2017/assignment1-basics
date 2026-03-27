@@ -63,6 +63,28 @@ class AdamW(torch.optim.Optimizer):
         return loss
 
 
+def cos_lr_warmup(t: int, lr_max: float, lr_min: float, Tw: int, Tc: int):
+    if t < Tw:
+        return lr_max * t / Tw
+    if t <= Tc:
+        return lr_min + 0.5 * (1 + math.cos((t - Tw) / (Tc - Tw) * math.pi)) * (lr_max - lr_min)
+    return lr_min
+
+
+def clip_grad(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float, eps=1e-6):
+    grads = [parameter.grad for parameter in parameters if parameter.grad is not None]
+    if not grads:
+        return
+
+    total_norm = torch.linalg.vector_norm(
+        torch.stack([torch.linalg.vector_norm(grad, ord=2) for grad in grads]),
+        ord=2,
+    )
+    clip_coef = torch.clamp(max_l2_norm / (total_norm + eps), max=1.0)
+    for grad in grads:
+        grad.mul_(clip_coef)
+
+
 def main():
     weights = torch.nn.Parameter(5 * torch.randn((10, 10)))
     opt = SGD([weights], lr=1e3)

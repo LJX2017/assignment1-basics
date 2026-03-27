@@ -1,6 +1,7 @@
 import math
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 from einops import einsum, rearrange
 
@@ -202,3 +203,18 @@ def cross_entropy(logits, target):  # Float[Tensor, " batch_size vocab_size"], I
     exp = torch.exp(logits)
     loss = -(logits[torch.arange(bs), target] - torch.log((torch.sum(exp, dim=-1))))
     return torch.sum(loss) / bs
+
+
+def get_batch(dataset: np.ndarray, batch_size: int, context_length: int, device: str):
+    starts = np.random.randint(0, len(dataset) - context_length, size=batch_size)
+    inputs = torch.tensor(
+        np.stack([dataset[start : start + context_length] for start in starts]),
+        dtype=torch.long,
+        device=device,
+    )
+    outputs = torch.tensor(
+        np.stack([dataset[start + 1 : start + context_length + 1] for start in starts]),
+        dtype=torch.long,
+        device=device,
+    )
+    return inputs, outputs
