@@ -218,3 +218,15 @@ def get_batch(dataset: np.ndarray, batch_size: int, context_length: int, device:
         device=device,
     )
     return inputs, outputs
+
+
+def save_checkpoint(model, optimizer, iteration, out):
+    obj = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "it": iteration}
+    torch.save(obj, out)
+
+
+def load_checkpoint(src, model, optimizer):
+    obj = torch.load(src)
+    model.load_state_dict(obj["model"])
+    optimizer.load_state_dict(obj["optimizer"])
+    return obj["it"]
