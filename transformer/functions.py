@@ -33,8 +33,11 @@ class RMSNorm(torch.nn.Module):
 class RotaryPositionalEmbedding(torch.nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
         super().__init__()
-        theta_pows = 1 / torch.pow(theta, torch.arange(0, d_k, step=2, dtype=torch.float32) / d_k)  # shape = (d_k/2)
-        positions = torch.arange(0, max_seq_len, step=1)  # shape(max_seq_length)
+        theta_pows = 1 / torch.pow(
+            theta,
+            torch.arange(0, d_k, step=2, dtype=torch.float32, device=device) / d_k,
+        )  # shape = (d_k/2)
+        positions = torch.arange(0, max_seq_len, step=1, device=device)  # shape(max_seq_length)
         # we want cos, sin of shape(max_seq_length, d_k)
         angle = einsum(positions, theta_pows, "max_seq_length, d_k -> max_seq_length d_k")
         self.register_buffer("cos", torch.cos(angle), persistent=False)
@@ -48,6 +51,7 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         # sin, cos shape(..., seq_len, d_k / 2)
         q1 = x[..., 0::2]
         q2 = x[..., 1::2]
+        token_positions = token_positions.to(self.cos.device)
         cos_cached = self.cos[token_positions]
         sin_cached = self.sin[token_positions]
         out = torch.empty_like(x)
@@ -116,12 +120,13 @@ class multihead_self_attention(torch.nn.Module):
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor):
         assert x.ndim == 3
         B, T, D = x.shape
+        token_positions = token_positions.to(x.device)
         q = self.q(x).reshape(B, T, self.num_q_heads, self.d_head).transpose(1, 2)  # shape = B, H, T, D
         k = self.k(x).reshape(B, T, self.num_kv_heads, self.d_head).transpose(1, 2)
         v = self.v(x).reshape(B, T, self.num_kv_heads, self.d_head).transpose(1, 2)
         mask = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
         if self.rope is None:
-            self.rope = RotaryPositionalEmbedding(self.theta, k.shape[-1], self.max_seq_len)
+            self.rope = RotaryPositionalEmbedding(self.theta, k.shape[-1], self.max_seq_len, device=x.device)
         q = self.rope(q, token_positions)
         k = self.rope(k, token_positions)
 
@@ -151,7 +156,7 @@ class transformer_block(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x is B, T, C
-        pos_ids = torch.arange(0, x.shape[1])
+        pos_ids = torch.arange(0, x.shape[1], device=x.device)
         pos_ids = rearrange(pos_ids, "seq -> 1 seq")
         x = x + self.mha(self.rms_norm1(x), token_positions=pos_ids)
         x = x + self.ffn(self.rms_norm2(x))
@@ -175,16 +180,18 @@ class transformer_lm(torch.nn.Module):
         self.embedding = Embedding(config.vocab_size, config.n_embd)
         d_k = config.n_embd // config.n_head
         self.config = config
-        self.layers = [
-            transformer_block(
-                config.n_embd,
-                config.n_head,
-                config.sequence_len,
-                config.d_ff,
-                rope=RotaryPositionalEmbedding(10000, d_k, config.sequence_len),
-            )
-            for i in range(config.n_layer)
-        ]
+        self.layers = torch.nn.ModuleList(
+            [
+                transformer_block(
+                    config.n_embd,
+                    config.n_head,
+                    config.sequence_len,
+                    config.d_ff,
+                    rope=RotaryPositionalEmbedding(10000, d_k, config.sequence_len),
+                )
+                for i in range(config.n_layer)
+            ]
+        )
         self.norm = RMSNorm(config.n_embd)
         self.lm_head = Linear(config.n_embd, config.vocab_size)
 
@@ -201,7 +208,8 @@ def cross_entropy(logits, target):  # Float[Tensor, " batch_size vocab_size"], I
     bs, vs = logits.shape
     logits = logits - torch.max(logits, dim=-1, keepdim=True).values
     exp = torch.exp(logits)
-    loss = -(logits[torch.arange(bs), target] - torch.log((torch.sum(exp, dim=-1))))
+    row_indices = torch.arange(bs, device=logits.device)
+    loss = -(logits[row_indices, target] - torch.log((torch.sum(exp, dim=-1))))
     return torch.sum(loss) / bs
 
 
