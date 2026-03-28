@@ -81,14 +81,14 @@ def train_loop(iter, iteration_per_eval, iteration_per_save):
         optimizer.zero_grad()
         inputs, outputs = train_generator.next()
         logits = model(inputs)
-        loss = cross_entropy(logits, outputs)
+        loss = cross_entropy(logits.view(-1, logits.size(-1)), outputs.view(-1))
         loss.back()
         optimizer.step()
         if step % iteration_per_eval == iteration_per_eval - 1:
             with torch.no_grad():
                 inputs, outputs = val_generator.next()
-                logits = model(inputs)
-                loss = cross_entropy(logits, outputs)
+                logits = model(inputs)  # B T V
+                loss = cross_entropy(logits.view(-1, logits.size(-1)), outputs.view(-1))
                 logging.log(loss)
         if step % iteration_per_save == iteration_per_save - 1:
             save_checkpoint(model, optimizer, step, "model_checkpoint/checkpoint_" + str(step))
